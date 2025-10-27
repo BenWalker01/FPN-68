@@ -134,8 +134,8 @@
       <SubSystem>Windows</SubSystem>
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
-      <AdditionalDependencies>C:\Users\olive\AppData\Roaming\EuroScope\UK\Data\Plugin\dev\FPNBW\FPN-68\EuroScopePlugInDll.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\olive\AppData\Roaming\EuroScope\UK\Data\Plugin\dev\FPNBW\FPN-68\EuroscopePlugInDll.lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Users\olive\AppData\Roaming\EuroScope\UK-2504\Data\Plugin\dev\FPN68\EuroScopePlugInDll.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\olive\AppData\Roaming\EuroScope\UK-2504\Data\Plugin\dev\FPN68\EuroScopePlugInDll.lib</AdditionalLibraryDirectories>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>

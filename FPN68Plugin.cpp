@@ -9,17 +9,8 @@
 #include <windows.h>
 #include <tchar.h>
 
+// =================== Ben's code starts here ===================
 void CFPNPlugin::LoadCustomFont() {
-	/*sendMessage("o");
-	HINSTANCE hResInstance = (HINSTANCE)GetModuleHandle(NULL);
-	HRSRC res = ::FindResource(hResInstance, MAKEINTRESOURCE(IDR_VCRFONT), L"BINARY");
-	std::ostringstream os;
-	os << GetLastError();
-	sendMessage(os.str());
-	if (res) {
-		sendMessage("woo");
-	}*/
-
 	HMODULE m;
 	GetModuleHandleExA(NULL, "FPN68.dll", &m);
 	std::ostringstream es;
@@ -36,7 +27,6 @@ void CFPNPlugin::LoadCustomFont() {
 	as << GetLastError();
 	sendMessage(as.str());
     if (hRes) {
-		sendMessage("POTATO");
         HGLOBAL hMem = LoadResource(AfxGetInstanceHandle(), hRes);
         if (hMem) {
 			
@@ -49,6 +39,7 @@ void CFPNPlugin::LoadCustomFont() {
         }
     }
 }
+// =================== Ben's code ends here ===================
 
 CFPNPlugin::CFPNPlugin(void) : CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, "FPN-68 PAR", "1.0.0", "Alice Ford, Ben Walker","GPL v3") {
 	LoadCustomFont();
@@ -141,31 +132,25 @@ void CFPNPlugin::loadNewAerodrome(const char* icao, const char* runway) {
 
 	bool foundRunway = false;
 	
-
 	do {
 		if (strncmp(elem.GetAirportName(), icao, 4) == 0) {
+			int runwayIndex = -1;
 			if (strcmp(elem.GetRunwayName(0), runway) == 0) {
-				elem.GetPosition(&runwayThreshold, 0);
-				elem.GetPosition(&otherThreshold, 1);
+				runwayIndex = 0;
+			}
+			else if (strcmp(elem.GetRunwayName(1), runway) == 0) {
+				runwayIndex = 1;
+			}
+			if (runwayIndex >= 0) {
+				elem.GetPosition(&runwayThreshold, runwayIndex);
+				elem.GetPosition(&otherThreshold, runwayIndex == 0 ? 1 : 0);
 				auto airportElevation = AIRPORT_ELEVATION;
 				std::string airportName(elem.GetAirportName(), 4);
 				if (airportElevation.find(airportName) != airportElevation.end() &&
-					airportElevation[airportName].find(elem.GetRunwayName(0)) != airportElevation[airportName].end()) {
-					elevation = airportElevation[airportName][elem.GetRunwayName(0)];
+					airportElevation[airportName].find(elem.GetRunwayName(runwayIndex)) != airportElevation[airportName].end()) {
+					elevation = airportElevation[airportName][elem.GetRunwayName(runwayIndex)];
 				}
-				sendMessage(("Loaded: " + std::string(elem.GetAirportName()) + ", runway " + std::string(elem.GetRunwayName(0)) + ", threshold elevation " + std::to_string(elevation) + " ft").c_str());
-				foundRunway = true;
-				break;
-			} else if (strcmp(elem.GetRunwayName(1), runway) == 0) {
-				elem.GetPosition(&runwayThreshold, 1);
-				elem.GetPosition(&otherThreshold, 0);
-				auto airportElevation = AIRPORT_ELEVATION;
-				std::string airportName(elem.GetAirportName(), 4);
-				if (airportElevation.find(airportName) != airportElevation.end() &&
-					airportElevation[airportName].find(elem.GetRunwayName(0)) != airportElevation[airportName].end()) {
-					elevation = airportElevation[airportName][elem.GetRunwayName(0)];
-				}
-				sendMessage(("Loaded: " + std::string(elem.GetAirportName()) + ", runway " + std::string(elem.GetRunwayName(1)) + ", threshold elevation " + std::to_string(elevation) + " ft").c_str());
+				sendMessage(("Loaded: " + std::string(elem.GetAirportName()) + ", runway " + std::string(elem.GetRunwayName(runwayIndex)) + ", threshold elevation " + std::to_string(elevation) + " ft").c_str());
 				foundRunway = true;
 				break;
 			}

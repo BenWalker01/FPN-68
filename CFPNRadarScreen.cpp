@@ -15,7 +15,7 @@ CFPNRadarScreen::CFPNRadarScreen() {
 
 }
 
-CFPNRadarScreen::~CFPNRadarScreen() = default;  // this is weird!
+CFPNRadarScreen::~CFPNRadarScreen() = default;
 
 void CFPNRadarScreen::OnAsrContentLoaded(bool loaded) {
 	// TODO: load settings
@@ -25,6 +25,9 @@ void CFPNRadarScreen::OnAsrContentToBeSaved() {
 	// TODO: save settings
 }
 
+/*
+* EuroScope has requested a screen refresh
+*/
 void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 	if (Phase != EuroScopePlugIn::REFRESH_PHASE_BEFORE_TAGS) return;
 
@@ -36,18 +39,20 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 	CBrush brush(BACKGROUND_COLOUR);
 	dc.FillRect(radarArea, &brush);
 
-	//CRect chatArea = GetChatArea();
 	radarArea.DeflateRect(70, 50);  // margins
 
+	// Settings box takes up 1/8 of the screen on the right
 	radarArea.right -= radarArea.right / 8;
 	
-	// Split screen in 2 across the middle
+	// Split screen vertically in 2
 	CRect glideslopeArea = CRect(radarArea.left, radarArea.top, radarArea.right, radarArea.CenterPoint().y);
 	CRect trackArea = CRect(radarArea.left, radarArea.CenterPoint().y, radarArea.right, radarArea.bottom);
+	
+	// Margins
 	glideslopeArea.bottom -= 30;
 	trackArea.top += 30;
 
-
+	// get range from main plugin
 	int range = ((CFPNPlugin*)GetPlugIn())->range;
 
 	drawVerticalScale(&dc, glideslopeArea, trackArea, range);
@@ -61,16 +66,15 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 	drawSettingsBox(&dc, radarArea , trackArea);
 
 	EuroScopePlugIn::CPosition runwayThreshold = ((CFPNPlugin*)GetPlugIn())->runwayThreshold;
-	//runwayThreshold.LoadFromStrings("W000.10.19.000", "N051.09.02.420");
-
 	EuroScopePlugIn::CPosition otherThreshold = ((CFPNPlugin*)GetPlugIn())->otherThreshold;
-	//otherThreshold.LoadFromStrings("W000.12.24.520", "N051.08.45.120");
-
 	float runwayHeading = runwayThreshold.DirectionTo(otherThreshold);
 
 	std::vector<std::string> foundCallsigns = std::vector<std::string>();
 
+	// Draw targets
 	for (EuroScopePlugIn::CRadarTarget target = GetPlugIn()->RadarTargetSelectFirst(); target.IsValid(); target = GetPlugIn()->RadarTargetSelectNext(target)) {
+		// decide if we should try to draw target
+
 		EuroScopePlugIn::CPosition pos = target.GetPosition().GetPosition();
 		int groundSpeed = target.GetGS();
 		float hdgToRunway = pos.DirectionTo(runwayThreshold);
@@ -80,17 +84,19 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 		}
 		float angleDifferenceRadians = angleDifference * M_PI / 180.0;
 		float distAlongCenterline = cos(angleDifferenceRadians) * pos.DistanceTo(runwayThreshold);
-		float distPurp = sin(angleDifferenceRadians) * pos.DistanceTo(runwayThreshold);
-		if (distAlongCenterline < 0 || distAlongCenterline > range || abs(distPurp) > range) continue;
+		// if behind radar or outside range, don't draw target
+		if (distAlongCenterline < 0 || distAlongCenterline > range) continue;
 
 		int altitude = target.GetPosition().GetPressureAltitude();
 		float trackDeviationAngle = runwayThreshold.DirectionTo(otherThreshold) - hdgToRunway;
 
-		if (abs(trackDeviationAngle) > 8) continue;
+		// if too far outside track or altitude too large, don't draw target
+		if (abs(trackDeviationAngle) > 8 || altitude > 6000) continue;
 
 		std::string callsign = target.GetCallsign();
 		foundCallsigns.push_back(callsign);
 
+		// if we've already seen them, update their position. Else, add them to our vector of targets.
 		bool found = false;
 		std::vector<CFPNRadarTarget> *prevTargets = ((CFPNPlugin*)GetPlugIn())->getPreviousTargets();
 		for (int i = 0; i < prevTargets->size(); i++) {
@@ -109,13 +115,7 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 		}
 	}
 
-	/*EuroScopePlugIn::CPosition pos;
-	pos.LoadFromStrings("E000.01.00.319", "N051.10.17.164");
-	int altitude = 3000;
-	CFPNRadarTarget targetPlot = CFPNRadarTarget(pos, altitude, runwayThreshold, runwayThreshold.DirectionTo(otherThreshold), range, 3.0f, glideslopeArea, trackArea);
-	targetPlot.draw(&dc, (CFPNPlugin*)GetPlugIn());*/
-
-	// now we put everything back
+	// Set hover status to false
 
 	for (auto item : { &mainControlsText, &rangeControlsText, &glideControlsText, &displayControlsText, &radarControlsText, &runwayControlsText }) {
 		for (int i = 0; i < item->size(); i++) {
@@ -128,6 +128,9 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 	dc.Detach();
 }
 
+/*
+* EuroScope has told us that we're over one of our objects
+*/
 void CFPNRadarScreen::OnOverScreenObject(int ObjectType, const char* sObjectId, POINT Pt, RECT Area) {
 	std::vector<std::vector<Setting>>* currentControls;
 	switch (ObjectType) {
@@ -149,7 +152,7 @@ void CFPNRadarScreen::OnOverScreenObject(int ObjectType, const char* sObjectId, 
 	case SETTINGS_OBJECT_RUNWAY_CONTROLS: 
 		currentControls = &runwayControlsText;
 		break;
-	default: return;  // OH DEAR
+	default: return;  // Some object we don't control / care about
 	}
 
 	int rowColId = std::atoi(sObjectId);
@@ -158,9 +161,13 @@ void CFPNRadarScreen::OnOverScreenObject(int ObjectType, const char* sObjectId, 
 
 	currentControls->at(row).at(col).hover = true;
 
+	// Redraw now so that we don't wait a second to draw
 	RequestRefresh();
 }
 
+/*
+* When we try to change the range, find that selected range in our list and update it on the display
+*/
 void CFPNRadarScreen::rangeChangeHandler(int range, CFPNRadarScreen* parent) {
 	((CFPNPlugin*)(parent->GetPlugIn()))->range = range;
 	std::map<int, int> m{ {1,2}, {3,3}, {5, 1000}, {10, 1001}, {15, 1002}, {20, 1003} };
@@ -174,6 +181,9 @@ void CFPNRadarScreen::rangeChangeHandler(int range, CFPNRadarScreen* parent) {
 	}
 }
 
+/*
+* When we change the runway, update it
+*/
 void CFPNRadarScreen::runwayChangeHandler(int r, int c, CFPNRadarScreen* parent) {
 	((CFPNPlugin*)(parent->GetPlugIn()))->loadNewAerodrome(((CFPNPlugin*)(parent->GetPlugIn()))->icao.c_str(), parent->runwayControlsText[r][c].text.c_str());
 
@@ -185,6 +195,9 @@ void CFPNRadarScreen::runwayChangeHandler(int r, int c, CFPNRadarScreen* parent)
 	}
 }
 
+/*
+* When we click something, we want to select it
+*/
 void CFPNRadarScreen::OnClickScreenObject(int ObjectType, const char* sObjectId, POINT Pt, RECT Area, int Button) {
 	std::vector<std::vector<Setting>>* currentControls;
 	switch (ObjectType) {
@@ -206,7 +219,7 @@ void CFPNRadarScreen::OnClickScreenObject(int ObjectType, const char* sObjectId,
 	case SETTINGS_OBJECT_RUNWAY_CONTROLS:
 		currentControls = &runwayControlsText;
 		break;
-	default: return;  // OH DEAR
+	default: return;  // Some object we don't control / care about
 	}
 
 	int rowColId = std::atoi(sObjectId);
@@ -224,6 +237,9 @@ void CFPNRadarScreen::OnClickScreenObject(int ObjectType, const char* sObjectId,
 	RequestRefresh();
 }
 
+/*
+* Draw X and Y axis for glideslope
+*/
 void CFPNRadarScreen::drawGSAxes(CDC *pDC, CRect area) {
 	CPen axesPen(0, 2, AXES_COLOUR);
 	pDC->SelectObject(&axesPen);
@@ -239,6 +255,9 @@ void CFPNRadarScreen::drawGSAxes(CDC *pDC, CRect area) {
 	pDC->LineTo(area.right, xAxisHeight);
 }
 
+/*
+* Draw X and Y axes for track
+*/
 void CFPNRadarScreen::drawTrackAxes(CDC* pDC, CRect area) {
 	CPen axesPen(0, 2, AXES_COLOUR);
 	pDC->SelectObject(&axesPen);
@@ -254,6 +273,9 @@ void CFPNRadarScreen::drawTrackAxes(CDC* pDC, CRect area) {
 	pDC->LineTo(area.right, xAxisHeight);
 }
 
+/*
+* Draw vertical scale (ticks) for glideslope and tracks
+*/
 void CFPNRadarScreen::drawVerticalScale(CDC* pDC, CRect glideslopeArea, CRect trackArea, int range) {
 	CPen axesPen(0, 2, AXES_COLOUR);
 	pDC->SelectObject(&axesPen);
@@ -265,10 +287,13 @@ void CFPNRadarScreen::drawVerticalScale(CDC* pDC, CRect glideslopeArea, CRect tr
 	auto* defFont = pDC->SelectObject(&font);
 
 	// Glideslope
+
+	// Bottom tick
 	pDC->MoveTo(glideslopeArea.left - 8, glideslopeArea.bottom);
 	pDC->LineTo(glideslopeArea.left + 8, glideslopeArea.bottom);
 	pDC->TextOutW(glideslopeArea.left - 13, glideslopeArea.bottom - 9, ("-" + std::to_string(range * 100)).c_str());
 
+	// Top ticks
 	for (int i = 1; i <= 4; i++) {
 		int yPos = glideslopeArea.bottom + (glideslopeArea.top - glideslopeArea.bottom) * (2 * i + 1) / 9;
 		pDC->MoveTo(glideslopeArea.left - 8, yPos);
@@ -278,7 +303,7 @@ void CFPNRadarScreen::drawVerticalScale(CDC* pDC, CRect glideslopeArea, CRect tr
 
 	// Track
 	for (int i = 0; i <= 8; i++) {
-		if (i == 4) continue;
+		if (i == 4) continue; // Don't draw a tick in the middle
 
 		int yPos = trackArea.bottom + (trackArea.top - trackArea.bottom) * i / 8;
 		pDC->MoveTo(trackArea.left - 8, yPos);
@@ -290,20 +315,9 @@ void CFPNRadarScreen::drawVerticalScale(CDC* pDC, CRect glideslopeArea, CRect tr
 	font.DeleteObject();
 }
 
-void CFPNRadarScreen::drawHorizontalScale(CDC* pDC, CRect glideslopeArea, CRect trackArea, int range) {
-	CPen axesPen(0, 2, AXES_COLOUR);
-	pDC->SelectObject(&axesPen);
-
-	CFont font;
-	font.CreatePointFont(100, L"VCR OSD Mono", pDC);
-	pDC->SetTextColor(AXES_COLOUR);
-	pDC->SetTextAlign(TA_RIGHT);
-	auto* defFont = pDC->SelectObject(&font);
-
-	pDC->SelectObject(defFont);
-	font.DeleteObject();
-}
-
+/*
+* Draw the glidepath, and all the horizontal ticks
+*/
 void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslopeArea, CRect trackArea, int range, float angle) {
 	// Glideslope
 	CPen glideslopePen(0, 2, GLIDESLOPE_COLOUR);
@@ -312,12 +326,16 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	int xAxisHeight = glideslopeArea.bottom + (glideslopeArea.top - glideslopeArea.bottom) / 9;
 	int xAxisLeft = glideslopeArea.left + X_AXIS_OFFSET;
 
-	int topOfGS = xAxisHeight + (tan(angle * (M_PI / 180)) * 6076.0f * ((float)range / (range * 200)) * (double)((glideslopeArea.top - glideslopeArea.bottom) * 2 / 9));
+	int topOfGS = xAxisHeight // base X axis height
+				+ tan(angle * (M_PI / 180))  // trig to get height
+				  * 6076.0f // feet -> miles
+				  * 0.005f // height scaling factor
+				  * ((double)(glideslopeArea.top - glideslopeArea.bottom) * 2 / 9);  // gap between two ticks
 
 	pDC->MoveTo(xAxisLeft, xAxisHeight);
 	pDC->LineTo(glideslopeArea.right, topOfGS);
 
-	// Track paths @ 1.25 and 3 degrees
+	// Draw track paths @ 1.25 and 3 degrees
 	CPen trackDeviationPen(0, 1, TRACK_DEVIATION_COLOUR);
 	pDC->SelectObject(&trackDeviationPen);
 
@@ -331,7 +349,7 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 		else if (i == 2) angle = -1.25f;
 		else if (i == 3) angle = -3.0f;
 
-		int trackOffset = trackXAxisHeight + (tan(angle * (M_PI / 180)) * 6076.0f * ((float)range / (range * 400)) * (double)((trackArea.top - trackArea.bottom) / 8));
+		int trackOffset = trackXAxisHeight + tan(angle * (M_PI / 180)) * 6076.0f * 0.0025f * ((double)(trackArea.top - trackArea.bottom) / 8);
 
 		pDC->MoveTo(trackXAxisLeft, trackXAxisHeight);
 		pDC->LineTo(trackArea.right, trackOffset);
@@ -347,28 +365,27 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	pDC->SetTextAlign(TA_CENTER);
 	auto* defFont = pDC->SelectObject(&font);
 
-	for (int i = 0; i <= range * 2; i++) {
+	for (int i = 0; i <= range * 2; i++) { // each "i" is equivalent to half a mile
 		int xPos = xAxisLeft + (glideslopeArea.right - xAxisLeft) * i / (range * 2);
-		int displacement = i % 2 == 0 ? 8 : 4;
+		int displacement = i % 2 == 0 ? 8 : 4;  // Larger ticks on every second tick
 		
-		pDC->MoveTo(xPos, xAxisHeight - displacement);  // GS
+		// Glideslope
+		pDC->MoveTo(xPos, xAxisHeight - displacement);
 		pDC->LineTo(xPos, xAxisHeight + displacement);
-		if (i <= 6) {
+		if (i <= 6) {  // 0-3 miles, draw text every half a tick
 			if (i % 2 == 0) pDC->TextOutW(xPos, xAxisHeight + 9, std::to_string(i / 2).c_str());
 			else {
-					std::ostringstream oss;
-					oss << std::fixed << std::setprecision(1) << ((i / 2) + 0.5);
-					pDC->TextOutW(xPos, xAxisHeight + 9, oss.str().c_str());
-				}
-							
-			}
+				std::ostringstream oss;
+				oss << std::fixed << std::setprecision(1) << ((i / 2) + 0.5);
+				pDC->TextOutW(xPos, xAxisHeight + 9, oss.str().c_str());
+			}				
+		} // otherwise draw text every tick
 		else if (i % 2 == 0) pDC->TextOutW(xPos, xAxisHeight + 9, std::to_string(i / 2).c_str());
 
-
+		// draw gear down (4 mile) and coordination (8 mile) lines
 		if (i == 8 || i == 16){
 			CPen redPen(PS_SOLID, 2, RGB(255, 0, 0));
 			CPen* pOldPen = pDC->SelectObject(&redPen);
-
 			
 			pDC->MoveTo(xPos, trackXAxisHeight - displacement); 
 			pDC->LineTo(xPos, trackXAxisHeight - displacement * 5);
@@ -377,17 +394,17 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 
 		}
 
-		pDC->MoveTo(xPos, trackXAxisHeight - displacement);  // track
+		// Now the same for track
+		pDC->MoveTo(xPos, trackXAxisHeight - displacement);
 		pDC->LineTo(xPos, trackXAxisHeight + displacement);
 		if (i <= 6) {
 			if (i % 2 == 0) pDC->TextOutW(xPos, trackXAxisHeight + 9, std::to_string(i / 2).c_str());
 			else {
-					std::ostringstream oss;
-					oss << std::fixed << std::setprecision(1) << ((i / 2) + 0.5);
-					pDC->TextOutW(xPos, trackXAxisHeight + 9, oss.str().c_str());
-				}
-							
-			}
+				std::ostringstream oss;
+				oss << std::fixed << std::setprecision(1) << ((i / 2) + 0.5);
+				pDC->TextOutW(xPos, trackXAxisHeight + 9, oss.str().c_str());
+			}			
+		}
 		else if (i % 2 == 0) pDC->TextOutW(xPos, trackXAxisHeight + 9, std::to_string(i / 2).c_str());
 	}
 
@@ -406,6 +423,9 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	font.DeleteObject();
 }
 
+/*
+* Draw green info text on screen
+*/
 void CFPNRadarScreen::drawInfoText(CDC* pDC, int x, int y) {
 	CFont font;
 	font.CreatePointFont(130, L"VCR OSD Mono", pDC);
@@ -433,7 +453,9 @@ void CFPNRadarScreen::drawInfoText(CDC* pDC, int x, int y) {
 	pDC->SelectObject(defFont);
 	font.DeleteObject();
 }
-
+/*
+* Draw settings box on right hand side of screen
+*/
 void CFPNRadarScreen::drawSettingsBox(CDC* pDC, CRect radarArea, CRect axesArea) {
 	// Calculate the area for the main settings box
 	CRect settingsBoxArea;

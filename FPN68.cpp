@@ -11,7 +11,6 @@
 
 CFPNPlugin* pMyPlugIn = NULL;
 
-// added stuff
 
 void __declspec (dllexport) EuroScopePlugInInit(EuroScopePlugIn::CPlugIn** ppPlugInInstance) {
 	// allocate

@@ -1,6 +1,3 @@
-#ifndef SETTINGSBOX_H
-#define SETTINGSBOX_H
-
 #pragma once
 #include <string>
 #include <vector>
@@ -26,5 +23,3 @@ private:
     std::vector<std::vector<CFPNRadarScreen::Setting>> m_setting;
 
 };
-
-#endif // SETTINGSBOX_H

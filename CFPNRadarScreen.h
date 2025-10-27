@@ -4,8 +4,7 @@
 #include "Constant.h"
 #include <afxpriv.h>
 
-class CFPNRadarScreen :
-    public EuroScopePlugIn::CRadarScreen
+class CFPNRadarScreen : public EuroScopePlugIn::CRadarScreen
 {
 public:
     CFPNRadarScreen();
@@ -74,7 +73,6 @@ private:
     void drawTrackAxes(CDC* pDC, CRect area);
     void drawInfoText(CDC *pDC, int x, int y);
     void drawVerticalScale(CDC *pDC, CRect glideslopeArea, CRect trackArea, int range);
-    void drawHorizontalScale(CDC* pDC, CRect glideslopeArea, CRect trackArea, int range);
     void drawGlidepathAndHorizontalTicks(CDC *pDC, CRect glideslopeArea, CRect trackArea, int range, float angle);  // tan(theta) * 6076 * range = alt at that range
     void drawSettingsBox(CDC* pDC, CRect radarArea,CRect axesArea);
 

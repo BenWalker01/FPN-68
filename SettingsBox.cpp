@@ -65,7 +65,7 @@ CPoint SettingsBox::Draw(CDC* pDC) {
     // Draw the title rectangle
     pDC->Rectangle(topRect);
     CString text(m_title.c_str());
-    pDC->SetTextColor(RGB(253, 254, 222));
+    pDC->SetTextColor(SELECTED_BOX_COLOUR);
     pDC->DrawText(text, topRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     // define settings box widths
@@ -78,8 +78,8 @@ CPoint SettingsBox::Draw(CDC* pDC) {
     pDC->SelectObject(&blackPen);
     pDC->SelectObject(&blackBrush);
     // Draw boxes
-    for (int row = 0; row < m_height; ++row) {
-        for (int col = 0; col < m_width; ++col) {
+    for (int row = 0; row < m_height; row++) {
+        for (int col = 0; col < m_width; col++) {
             CFPNRadarScreen::Setting setting = m_setting[row][col];
             if (setting.text.empty()) {
                 continue;
@@ -98,18 +98,18 @@ CPoint SettingsBox::Draw(CDC* pDC) {
             CRect subBox(left, top, right, bottom);
             subBox.DeflateRect(2, 2);
 
-            std::string rowcolid = std::to_string(row * 1000 + col);  // just easier than messing around with m_width/m_height
+            std::string rowcolid = std::to_string(row * 1000 + col);  // 1000 indexing so we can use the same number
             m_parent->AddScreenObject(m_objectType, rowcolid.c_str(), subBox, false, "");
 
             // Set colors based on flipColors
-            COLORREF boxColor = flipColors ? RGB(253, 254, 222) : RGB(87, 86, 104);
-            COLORREF textColor = flipColors ? RGB(87, 86, 104) : RGB(253, 254, 222);
+            COLORREF boxColor = flipColors ? SELECTED_BOX_COLOUR : DESELECTED_BOX_COLOUR;
+            COLORREF textColor = flipColors ? DESELECTED_BOX_COLOUR : SELECTED_BOX_COLOUR;
 
             CBrush brush(boxColor);
             CPen pen(PS_SOLID, 1, boxColor);
 
             if (setting.hover) {
-                if (setting.inop) {
+                if (setting.inop) { // paint INOP
                     CBrush outerBrush(RGB(255, 0, 0));
                     CPen outerPen(PS_SOLID, 1, RGB(255, 0, 0));
                     pDC->SelectObject(&outerBrush);
@@ -125,7 +125,7 @@ CPoint SettingsBox::Draw(CDC* pDC) {
 
                     continue;
                 }
-                else {
+                else { // paint border
                     CBrush outerBrush(textColor);
                     CPen outerPen(PS_SOLID, 1, textColor);
                     pDC->SelectObject(&outerBrush);
@@ -139,7 +139,7 @@ CPoint SettingsBox::Draw(CDC* pDC) {
                     subBox.InflateRect(3, 3);
                 }
             }
-            else {
+            else { // otherwise just standard
                 pDC->SelectObject(&pen);
                 pDC->SelectObject(&brush);
                 pDC->Rectangle(subBox);

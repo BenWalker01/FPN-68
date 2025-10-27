@@ -27,7 +27,7 @@ public:
         return &previousTargets;
     }
 
-    float getElevation() const {
+    float getElevation() {
         return elevation;
     }
 
@@ -42,7 +42,6 @@ public:
     void loadNewAerodrome(const char* icao, const char* runway);
 private:
     std::vector<void *> radarScreens;  // CFPNRadarScreen *
-
     
     std::vector<std::string> getAerodromeRunways(const char* icao);
 };

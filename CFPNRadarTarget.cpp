@@ -35,14 +35,6 @@ CFPNRadarTarget::~CFPNRadarTarget() {
 
 }
 
-void logMessage(const std::string& message) {
-	std::ofstream logFile("FPN_plugin.log", std::ios_base::app);
-	if (logFile.is_open()) {
-		logFile << message << std::endl;
-		logFile.close();
-	}
-}
-
 void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos,int groundSpeed, int altitude, int radarRange, EuroScopePlugIn::CPosition runwayThreshold, EuroScopePlugIn::CPosition otherThreshold) {
 	this->radarRange = radarRange;
 	this->runwayThreshold = runwayThreshold;
@@ -64,11 +56,11 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos,int groundSp
 		posAltTime = st;
 
 		pastPositions.push_back(std::tuple<EuroScopePlugIn::CPosition, int, SYSTEMTIME>(pos, altitude, st));
-	} else {  // lerp
+	} else {  // lerp (position updates are only every 5 seconds)
 		if (previousAltitude == -1) return;
 
 		double deltaT = (posAltTime.wSecond * 1000 + posAltTime.wMilliseconds) - (previousPosAltTime.wSecond * 1000 + previousPosAltTime.wMilliseconds);
-		if (deltaT == 0) return; // Don't divide by 0 please
+		if (deltaT == 0) return; // Don't divide by 0
 		if (deltaT < 0) {
 			deltaT += 60'000; // account for minute change
 		}
@@ -91,6 +83,7 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos,int groundSp
 			newDeltaT += 60'000; // account for minute change
 		}
 
+		// for lerping
 		double timeMultiplier = newDeltaT / deltaT;
 		
 		EuroScopePlugIn::CPosition newDeltaPos = EuroScopePlugIn::CPosition();
@@ -101,17 +94,6 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos,int groundSp
 		EuroScopePlugIn::CPosition newPos = EuroScopePlugIn::CPosition();
 		newPos.m_Latitude = pos.m_Latitude + newDeltaPos.m_Latitude;
 		newPos.m_Longitude = pos.m_Longitude + newDeltaPos.m_Longitude;
-		// Check if the new position is far away from the last one
-		double latDifferenceNM = (newPos.m_Latitude - pos.m_Latitude) * 60.0;
-		double lonDifferenceNM = (newPos.m_Longitude - pos.m_Longitude) * 60.0;
-
-		// Calculate the distance in nautical miles
-		double distanceNM = sqrt(pow(latDifferenceNM, 2) + pow(lonDifferenceNM, 2));
-
-		std::string logMsg = "Current Time: " + std::to_string(st.wHour) + ":" + std::to_string(st.wMinute) + ":" + std::to_string(st.wSecond) + "." + std::to_string(st.wMilliseconds) + ":";
-		logMsg += " / DeltaT: " + std::to_string(deltaT) + " / NewDeltaT: " + std::to_string(newDeltaT);
-		logMsg += " / CurrentMs: " + std::to_string(currentTotalMilliseconds) + " / PreviousMs: " + std::to_string(previousTotalMilliseconds) + "\n";
-		logMessage(logMsg);
 
 		pastPositions.push_back(std::tuple<EuroScopePlugIn::CPosition, int, SYSTEMTIME>(newPos, altitude + newDeltaAlt, posAltTime)); 
 	}
@@ -123,6 +105,7 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos,int groundSp
 
 void CFPNRadarTarget::draw(CDC *pDC) {
 	int index = 0;
+	// for each of our past positons (so we can draw the trail)
 	for (auto& target : pastPositions) {
 		EuroScopePlugIn::CPosition thisPos = std::get<0>(target);
 		int thisAlt = std::get<1>(target);
@@ -151,6 +134,8 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 
 		pDC->MoveTo(xPos, yPos);
 		pDC->Ellipse(xPos - 3, yPos - 3, xPos + 3, yPos + 3);
+
+		// =================== Ben's code begins here ===================
 
 		if (index == 4) { // Vertical tag
 			
