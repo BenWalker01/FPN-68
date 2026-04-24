@@ -2,130 +2,195 @@
 #include "CFPNRadarTarget.h"
 #define _USE_MATH_DEFINES
 #include <math.h>
-#include <fstream>
+#include <algorithm>
 #include <cmath>
-#include <iostream>
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 
+namespace {
+	constexpr size_t kMaxTrailPoints = 5;
+	constexpr double kMaxExtrapolationRatio = 0.8;
+	constexpr ULONGLONG kMaxExtrapolationMs = 1200;
+	constexpr double kSmoothingTimeConstantMs = 140.0;
+	constexpr double kMinSmoothingAlpha = 0.12;
+	constexpr double kMaxSmoothingAlpha = 0.9;
+	constexpr double kMaxAzimuthDeviationDeg = 8.0;
+	constexpr double kMaxElevationAngleDeg = 7.0;
 
-CFPNRadarTarget::CFPNRadarTarget(std::string callsign, EuroScopePlugIn::CPosition pos,int groundSpeed, int altitude, EuroScopePlugIn::CPosition runwayThreshold, float runwayHeading, int radarRange,float airportElevation, float glideslopeAngle, CRect glideslopeArea, CRect trackArea) {
+	double clampValue(double value, double minValue, double maxValue) {
+		return (std::max)(minValue, (std::min)(value, maxValue));
+	}
+
+	EuroScopePlugIn::CPosition lerpPosition(const EuroScopePlugIn::CPosition& from, const EuroScopePlugIn::CPosition& to, double alpha) {
+		EuroScopePlugIn::CPosition result;
+		result.m_Latitude = from.m_Latitude + (to.m_Latitude - from.m_Latitude) * alpha;
+		result.m_Longitude = from.m_Longitude + (to.m_Longitude - from.m_Longitude) * alpha;
+		return result;
+	}
+
+	int lerpInt(int from, int to, double alpha) {
+		return static_cast<int>(std::lround(from + (to - from) * alpha));
+	}
+
+	double normalizeBearingDifference(double angleDeg) {
+		double normalized = std::fmod(angleDeg + 180.0, 360.0);
+		if (normalized < 0.0) {
+			normalized += 360.0;
+		}
+		return normalized - 180.0;
+	}
+}
+
+CFPNRadarTarget::CFPNRadarTarget(std::string callsign, EuroScopePlugIn::CPosition pos, int groundSpeed, int altitude, EuroScopePlugIn::CPosition runwayThreshold, float runwayHeading, int radarRange, float airportElevation, float glideslopeAngle, CRect glideslopeArea, CRect trackArea) {
 	this->callsign = callsign;
 	this->pos = pos;
 	this->groundSpeed = groundSpeed;
 	this->altitude = altitude;
 	this->runwayThreshold = runwayThreshold;
 	this->runwayHeading = runwayHeading;
-	this->radarRange = radarRange;
+	this->radarRange = (std::max)(1, radarRange);
 	this->airportElevation = airportElevation;
 	this->glideslopeAngle = glideslopeAngle;
 	this->glideslopeArea = glideslopeArea;
 	this->trackArea = trackArea;
 
-	pastPositions = std::vector<std::tuple<EuroScopePlugIn::CPosition, int, SYSTEMTIME>>();
+	const ULONGLONG now = GetTickCount64();
 
-	SYSTEMTIME st;
-	GetSystemTime(&st);
-	posAltTime = st;
+	latestSamplePos = pos;
+	latestSampleAltitude = altitude;
+	latestSampleTimeMs = now;
+	hasLatestSample = true;
 
-	pastPositions.push_back(std::tuple<EuroScopePlugIn::CPosition, int, SYSTEMTIME>(pos, altitude, st));
+	smoothedPos = pos;
+	smoothedAltitude = altitude;
+	lastSmoothingTimeMs = now;
+	hasSmoothedState = true;
+
+	pastPositions.clear();
+	pastPositions.emplace_back(pos, altitude, now);
 }
 
 CFPNRadarTarget::~CFPNRadarTarget() {
-
 }
 
-void logMessage(const std::string& message) {
-	std::ofstream logFile("FPN_plugin.log", std::ios_base::app);
-	if (logFile.is_open()) {
-		logFile << message << std::endl;
-		logFile.close();
+bool CFPNRadarTarget::isVisibleToRadarHeads(const EuroScopePlugIn::CPosition& targetPos, int targetAltitude, const EuroScopePlugIn::CPosition& runwayThreshold, float runwayHeading, int radarRangeNm, float airportElevationFt) {
+	const int safeRadarRangeNm = (std::max)(1, radarRangeNm);
+
+	const double distanceToRunwayNm = targetPos.DistanceTo(runwayThreshold);
+	const double headingToRunwayDeg = targetPos.DirectionTo(runwayThreshold);
+	const double azimuthDeviationDeg = normalizeBearingDifference(static_cast<double>(runwayHeading) - headingToRunwayDeg);
+	const double azimuthDeviationRad = azimuthDeviationDeg * (M_PI / 180.0);
+	const double alongCenterlineNm = std::cos(azimuthDeviationRad) * distanceToRunwayNm;
+
+	if (alongCenterlineNm <= 0.0 || alongCenterlineNm > static_cast<double>(safeRadarRangeNm)) {
+		return false;
 	}
+	if (std::fabs(azimuthDeviationDeg) > kMaxAzimuthDeviationDeg) {
+		return false;
+	}
+
+	if (airportElevationFt >= 0.0f) {
+		const double apparentElevationFt = static_cast<double>(targetAltitude) - static_cast<double>(airportElevationFt);
+		const double alongCenterlineFt = (std::max)(alongCenterlineNm * 6076.0, 1.0);
+		const double elevationAngleDeg = std::atan2(apparentElevationFt, alongCenterlineFt) * (180.0 / M_PI);
+
+		if (elevationAngleDeg > kMaxElevationAngleDeg) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
-void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos,int groundSpeed, int altitude, int radarRange, EuroScopePlugIn::CPosition runwayThreshold, EuroScopePlugIn::CPosition otherThreshold) {
-	this->radarRange = radarRange;
+void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos, int groundSpeed, int altitude, int radarRange, EuroScopePlugIn::CPosition runwayThreshold, EuroScopePlugIn::CPosition otherThreshold, float glideslopeAngle, CRect glideslopeArea, CRect trackArea) {
+	this->radarRange = (std::max)(1, radarRange);
 	this->runwayThreshold = runwayThreshold;
 	this->runwayHeading = runwayThreshold.DirectionTo(otherThreshold);
-	
-	if (this->pos.m_Latitude != pos.m_Latitude || this->pos.m_Longitude != pos.m_Longitude || this->altitude != altitude) {
-		previousPos = this->pos;
-		previousGroundSpeed = this->groundSpeed;
-		previousAltitude = this->altitude;
-		previousPosAltTime = posAltTime;
+	this->glideslopeAngle = glideslopeAngle;
+	this->glideslopeArea = glideslopeArea;
+	this->trackArea = trackArea;
+	this->groundSpeed = groundSpeed;
 
-		this->pos = pos;
-		this->altitude = altitude;
-		this->groundSpeed = groundSpeed;
+	const ULONGLONG now = GetTickCount64();
 
-		SYSTEMTIME st;
-		GetSystemTime(&st);
+	const bool hasNewSample = !hasLatestSample ||
+		latestSamplePos.m_Latitude != pos.m_Latitude ||
+		latestSamplePos.m_Longitude != pos.m_Longitude ||
+		latestSampleAltitude != altitude;
 
-		posAltTime = st;
-
-		pastPositions.push_back(std::tuple<EuroScopePlugIn::CPosition, int, SYSTEMTIME>(pos, altitude, st));
-	} else {  // lerp
-		if (previousAltitude == -1) return;
-
-		double deltaT = (posAltTime.wSecond * 1000 + posAltTime.wMilliseconds) - (previousPosAltTime.wSecond * 1000 + previousPosAltTime.wMilliseconds);
-		if (deltaT == 0) return; // Don't divide by 0 please
-		if (deltaT < 0) {
-			deltaT += 60'000; // account for minute change
+	if (hasNewSample) {
+		if (hasLatestSample) {
+			previousPos = latestSamplePos;
+			previousAltitude = latestSampleAltitude;
+			previousSampleTimeMs = latestSampleTimeMs;
+			hasPreviousSample = true;
 		}
 
-
-		EuroScopePlugIn::CPosition deltaPos = EuroScopePlugIn::CPosition();
-		deltaPos.m_Latitude = pos.m_Latitude - previousPos.m_Latitude;
-		deltaPos.m_Longitude = pos.m_Longitude - previousPos.m_Longitude;
-
-		int deltaAlt = altitude - previousAltitude;
-
-		SYSTEMTIME st;
-		GetSystemTime(&st);
-
-        double currentTotalMilliseconds = st.wSecond * 1000 + st.wMilliseconds;
-        double previousTotalMilliseconds = posAltTime.wSecond * 1000 + posAltTime.wMilliseconds;
-
-        double newDeltaT = currentTotalMilliseconds - previousTotalMilliseconds;
-		if (newDeltaT < 0){
-			newDeltaT += 60'000; // account for minute change
-		}
-
-		double timeMultiplier = newDeltaT / deltaT;
-		
-		EuroScopePlugIn::CPosition newDeltaPos = EuroScopePlugIn::CPosition();
-		newDeltaPos.m_Latitude = timeMultiplier * deltaPos.m_Latitude;
-		newDeltaPos.m_Longitude = timeMultiplier * deltaPos.m_Longitude;
-		int newDeltaAlt = timeMultiplier * deltaAlt;
-
-		EuroScopePlugIn::CPosition newPos = EuroScopePlugIn::CPosition();
-		newPos.m_Latitude = pos.m_Latitude + newDeltaPos.m_Latitude;
-		newPos.m_Longitude = pos.m_Longitude + newDeltaPos.m_Longitude;
-		// Check if the new position is far away from the last one
-		double latDifferenceNM = (newPos.m_Latitude - pos.m_Latitude) * 60.0;
-		double lonDifferenceNM = (newPos.m_Longitude - pos.m_Longitude) * 60.0;
-
-		// Calculate the distance in nautical miles
-		double distanceNM = sqrt(pow(latDifferenceNM, 2) + pow(lonDifferenceNM, 2));
-
-		std::string logMsg = "Current Time: " + std::to_string(st.wHour) + ":" + std::to_string(st.wMinute) + ":" + std::to_string(st.wSecond) + "." + std::to_string(st.wMilliseconds) + ":";
-		logMsg += " / DeltaT: " + std::to_string(deltaT) + " / NewDeltaT: " + std::to_string(newDeltaT);
-		logMsg += " / CurrentMs: " + std::to_string(currentTotalMilliseconds) + " / PreviousMs: " + std::to_string(previousTotalMilliseconds) + "\n";
-		logMessage(logMsg);
-
-		pastPositions.push_back(std::tuple<EuroScopePlugIn::CPosition, int, SYSTEMTIME>(newPos, altitude + newDeltaAlt, posAltTime)); 
+		latestSamplePos = pos;
+		latestSampleAltitude = altitude;
+		latestSampleTimeMs = now;
+		hasLatestSample = true;
 	}
-	
-	if (pastPositions.size() > 5) {
+
+	EuroScopePlugIn::CPosition projectedPos = latestSamplePos;
+	int projectedAltitude = latestSampleAltitude;
+
+	if (hasPreviousSample && latestSampleTimeMs > previousSampleTimeMs) {
+		const ULONGLONG sampleDeltaMs = latestSampleTimeMs - previousSampleTimeMs;
+		const ULONGLONG sinceLatestMs = now - latestSampleTimeMs;
+
+		const double cappedLeadMs = (std::min)(
+			static_cast<double>(kMaxExtrapolationMs),
+			static_cast<double>(sampleDeltaMs) * kMaxExtrapolationRatio);
+		const double extrapolatedMs = clampValue(static_cast<double>(sinceLatestMs), 0.0, cappedLeadMs);
+		const double extrapolationFactor = extrapolatedMs / static_cast<double>(sampleDeltaMs);
+
+		projectedPos.m_Latitude = latestSamplePos.m_Latitude + (latestSamplePos.m_Latitude - previousPos.m_Latitude) * extrapolationFactor;
+		projectedPos.m_Longitude = latestSamplePos.m_Longitude + (latestSamplePos.m_Longitude - previousPos.m_Longitude) * extrapolationFactor;
+		projectedAltitude = latestSampleAltitude + static_cast<int>(std::lround((latestSampleAltitude - previousAltitude) * extrapolationFactor));
+	}
+
+	if (!hasSmoothedState) {
+		smoothedPos = projectedPos;
+		smoothedAltitude = projectedAltitude;
+		hasSmoothedState = true;
+		lastSmoothingTimeMs = now;
+	}
+	else {
+		const ULONGLONG frameDeltaMs = now - lastSmoothingTimeMs;
+		const double rawAlpha = 1.0 - std::exp(-(static_cast<double>(frameDeltaMs) / kSmoothingTimeConstantMs));
+		const double alpha = clampValue(rawAlpha, kMinSmoothingAlpha, kMaxSmoothingAlpha);
+
+		smoothedPos = lerpPosition(smoothedPos, projectedPos, alpha);
+		smoothedAltitude = lerpInt(smoothedAltitude, projectedAltitude, alpha);
+		lastSmoothingTimeMs = now;
+	}
+
+	this->pos = smoothedPos;
+	this->altitude = smoothedAltitude;
+
+	pastPositions.emplace_back(this->pos, this->altitude, now);
+	if (pastPositions.size() > kMaxTrailPoints) {
 		pastPositions.erase(pastPositions.begin());
 	}
 }
 
-void CFPNRadarTarget::draw(CDC *pDC) {
-	int index = 0;
-	for (auto& target : pastPositions) {
+void CFPNRadarTarget::draw(CDC* pDC) {
+	if (pastPositions.empty()) {
+		return;
+	}
+
+	const int safeRadarRange = (std::max)(1, radarRange);
+	const size_t highlightedIndex = pastPositions.size() - 1;
+
+	for (size_t index = 0; index < pastPositions.size(); index++) {
+		const auto& target = pastPositions[index];
 		EuroScopePlugIn::CPosition thisPos = std::get<0>(target);
 		int thisAlt = std::get<1>(target);
+
+		if (!isVisibleToRadarHeads(thisPos, thisAlt, runwayThreshold, runwayHeading, safeRadarRange, airportElevation)) {
+			continue;
+		}
 
 		float distanceToRunway = thisPos.DistanceTo(runwayThreshold);
 		float hdgToRunway = thisPos.DirectionTo(runwayThreshold);
@@ -135,13 +200,11 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 		// get X location on screen
 		int xAxisHeight = glideslopeArea.bottom + (glideslopeArea.top - glideslopeArea.bottom) / 9;
 		int xAxisLeft = glideslopeArea.left + X_AXIS_OFFSET;
-		int xPos = xAxisLeft + (glideslopeArea.right - xAxisLeft) * range / (radarRange);
+		int xPos = xAxisLeft + (glideslopeArea.right - xAxisLeft) * range / safeRadarRange;
 
 		// get Y location on screen
-		double angle = atan2(thisAlt, range);
-		double apparentAlt = tan(angle) * range;
-		double apparentElevation = apparentAlt - airportElevation;
-		int yPos = xAxisHeight + (apparentElevation / (radarRange * 200)) * (double)((glideslopeArea.top - glideslopeArea.bottom) * 2 / 9);
+		double apparentElevation = static_cast<double>(thisAlt) - airportElevation;
+		int yPos = xAxisHeight + (apparentElevation / (safeRadarRange * 200.0)) * (double)((glideslopeArea.top - glideslopeArea.bottom) * 2 / 9);
 
 		// draw radar blip
 		CPen primaryPen(0, 1, PRIMARY_COLOUR);
@@ -152,8 +215,8 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 		pDC->MoveTo(xPos, yPos);
 		pDC->Ellipse(xPos - 3, yPos - 3, xPos + 3, yPos + 3);
 
-		if (index == 4) { // Vertical tag
-			
+		if (index == highlightedIndex) { // Vertical tag
+
 			COLORREF originalTextColor = pDC->GetTextColor();
 			pDC->SetTextColor(TRACK_DEVIATION_COLOUR);
 			pDC->TextOutW(xPos - 3, yPos - 18, _T("A"));
@@ -169,7 +232,6 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 			CSize textSize = pDC->GetTextExtent(_T("A"));
 			int textHeight = textSize.cy;
 			int totalTextHeight = textHeight * 3;
-			int spacing = 10;
 
 			pDC->TextOutW(xPos - 35, yPos - 30 - totalTextHeight, _T("S"));
 
@@ -184,7 +246,7 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 			pDC->TextOutW(xPos - 75, yPos - 30 - totalTextHeight + textHeight + 3, groundSpeedCStr);
 
 			// Vertical Deviation
-			int altDiff = static_cast<int>(apparentElevation - ((tan(3 * (M_PI) / 180) * (distanceToRunway*6076.0f))));
+			int altDiff = static_cast<int>(apparentElevation - (tan(glideslopeAngle * (M_PI) / 180) * (distanceToRunway * 6076.0f)));
 
 			if (altDiff > 0) { // High
 				std::wstringstream ss;
@@ -208,12 +270,12 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 		int trackXAxisHeight = trackArea.CenterPoint().y;
 		int trackXAxisLeft = trackArea.left + X_AXIS_OFFSET;
 
-		xPos = trackXAxisLeft + (trackArea.right - trackXAxisLeft) * range / (radarRange);
+		xPos = trackXAxisLeft + (trackArea.right - trackXAxisLeft) * range / safeRadarRange;
 		yPos = trackXAxisHeight + (tan(trackDeviationAngle * (M_PI / 180)) * 6076.0f * (range / 6000.0f) * (double)((trackArea.top - trackArea.bottom) / 8));
 
 		pDC->MoveTo(xPos, yPos);
 		pDC->Ellipse(xPos - 3, yPos - 3, xPos + 3, yPos + 3);
-		if (index == 4) { // Horizontal tag
+		if (index == highlightedIndex) { // Horizontal tag
 
 			COLORREF originalTextColor = pDC->GetTextColor();
 			pDC->SetTextColor(TRACK_DEVIATION_COLOUR);
@@ -230,7 +292,6 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 			CSize textSize = pDC->GetTextExtent(_T("A"));
 			int textHeight = textSize.cy;
 			int totalTextHeight = textHeight * 3;
-			int spacing = 10;
 
 			pDC->TextOutW(xPos - 35, yPos - 30 - totalTextHeight, _T("S"));
 			// GroundSpeed Dist line
@@ -244,8 +305,8 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 			pDC->TextOutW(xPos - 75, yPos - 30 - totalTextHeight + textHeight + 3, groundSpeedCStr);
 
 			// Lateral Deviation
-			int lateralOffset = static_cast<int>(tan(trackDeviationAngle * (M_PI / 180.0)) * (distanceToRunway*6076.0f));
-			
+			int lateralOffset = static_cast<int>(tan(trackDeviationAngle * (M_PI / 180.0)) * (distanceToRunway * 6076.0f));
+
 			if (lateralOffset > 0) { // Right of centerline
 				std::wstringstream ss;
 				ss << L"+" << std::setw(3) << std::setfill(L'0') << lateralOffset << L"\u2190";
@@ -264,7 +325,5 @@ void CFPNRadarTarget::draw(CDC *pDC) {
 
 			pDC->SetTextColor(originalTextColor);
 		}
-
-		index++;
 	}
 }

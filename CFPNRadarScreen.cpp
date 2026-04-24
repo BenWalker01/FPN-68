@@ -10,6 +10,8 @@
 #include <cmath>
 #include <afxwin.h>
 #include <map>
+#include <algorithm>
+#include <unordered_set>
 
 CFPNRadarScreen::CFPNRadarScreen() {
 
@@ -69,34 +71,22 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 
 	float runwayHeading = runwayThreshold.DirectionTo(otherThreshold);
 
-	std::vector<std::string> foundCallsigns = std::vector<std::string>();
+	std::unordered_set<std::string> foundCallsigns;
+	std::vector<CFPNRadarTarget>* prevTargets = ((CFPNPlugin*)GetPlugIn())->getPreviousTargets();
 
 	for (EuroScopePlugIn::CRadarTarget target = GetPlugIn()->RadarTargetSelectFirst(); target.IsValid(); target = GetPlugIn()->RadarTargetSelectNext(target)) {
 		EuroScopePlugIn::CPosition pos = target.GetPosition().GetPosition();
 		int groundSpeed = target.GetGS();
-		float hdgToRunway = pos.DirectionTo(runwayThreshold);
-		float angleDifference = fmod((hdgToRunway - runwayHeading + 360), 360);
-		if (angleDifference > 180) {
-			angleDifference = 360 - angleDifference;
-		}
-		float angleDifferenceRadians = angleDifference * M_PI / 180.0;
-		float distAlongCenterline = cos(angleDifferenceRadians) * pos.DistanceTo(runwayThreshold);
-		float distPurp = sin(angleDifferenceRadians) * pos.DistanceTo(runwayThreshold);
-		if (distAlongCenterline < 0 || distAlongCenterline > range || abs(distPurp) > range) continue;
-
 		int altitude = target.GetPosition().GetPressureAltitude();
-		float trackDeviationAngle = runwayThreshold.DirectionTo(otherThreshold) - hdgToRunway;
-
-		if (abs(trackDeviationAngle) > 8) continue;
+		if (!CFPNRadarTarget::isVisibleToRadarHeads(pos, altitude, runwayThreshold, runwayHeading, range, elevation)) continue;
 
 		std::string callsign = target.GetCallsign();
-		foundCallsigns.push_back(callsign);
+		foundCallsigns.insert(callsign);
 
 		bool found = false;
-		std::vector<CFPNRadarTarget> *prevTargets = ((CFPNPlugin*)GetPlugIn())->getPreviousTargets();
 		for (int i = 0; i < prevTargets->size(); i++) {
 			if ((prevTargets->at(i)).callsign == callsign) {
-				(prevTargets->at(i)).updatePosition(pos,groundSpeed, altitude, range, runwayThreshold, otherThreshold);
+				(prevTargets->at(i)).updatePosition(pos, groundSpeed, altitude, range, runwayThreshold, otherThreshold, angle, glideslopeArea, trackArea);
 				(prevTargets->at(i)).draw(&dc);
 
 				found = true;
@@ -109,6 +99,13 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 			prevTargets->push_back(targetPlot);
 		}
 	}
+
+	prevTargets->erase(
+		std::remove_if(prevTargets->begin(), prevTargets->end(),
+			[&foundCallsigns](const CFPNRadarTarget& trackedTarget) {
+				return foundCallsigns.find(trackedTarget.callsign) == foundCallsigns.end();
+			}),
+		prevTargets->end());
 
 	/*EuroScopePlugIn::CPosition pos;
 	pos.LoadFromStrings("E000.01.00.319", "N051.10.17.164");
@@ -153,9 +150,14 @@ void CFPNRadarScreen::OnOverScreenObject(int ObjectType, const char* sObjectId, 
 	default: return;  // OH DEAR
 	}
 
+	if (sObjectId == nullptr) return;
+
 	int rowColId = std::atoi(sObjectId);
 	int row = rowColId / 1000;
 	int col = rowColId % 1000;
+	if (row < 0 || col < 0) return;
+	if (row >= static_cast<int>(currentControls->size())) return;
+	if (col >= static_cast<int>(currentControls->at(row).size())) return;
 
 	currentControls->at(row).at(col).hover = true;
 
@@ -223,9 +225,14 @@ void CFPNRadarScreen::OnClickScreenObject(int ObjectType, const char* sObjectId,
 	default: return;  // OH DEAR
 	}
 
+	if (sObjectId == nullptr) return;
+
 	int rowColId = std::atoi(sObjectId);
 	int row = rowColId / 1000;
 	int col = rowColId % 1000;
+	if (row < 0 || col < 0) return;
+	if (row >= static_cast<int>(currentControls->size())) return;
+	if (col >= static_cast<int>(currentControls->at(row).size())) return;
 
 	currentControls->at(row).at(col).selected = !currentControls->at(row).at(col).selected;
 
