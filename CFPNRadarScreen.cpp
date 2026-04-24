@@ -49,9 +49,10 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 
 
 	int range = ((CFPNPlugin*)GetPlugIn())->range;
+	float angle = ((CFPNPlugin*)GetPlugIn())->angle;
 
 	drawVerticalScale(&dc, glideslopeArea, trackArea, range);
-	drawGlidepathAndHorizontalTicks(&dc, glideslopeArea, trackArea, range, 3.0f);
+	drawGlidepathAndHorizontalTicks(&dc, glideslopeArea, trackArea, range, angle);
 	drawGSAxes(&dc, glideslopeArea);
 	drawTrackAxes(&dc, trackArea);
 
@@ -103,7 +104,7 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 			}
 		}
 		if (!found) {
-			CFPNRadarTarget targetPlot = CFPNRadarTarget(callsign, pos,groundSpeed, altitude, runwayThreshold, runwayThreshold.DirectionTo(otherThreshold), range, elevation, 3.0f, glideslopeArea, trackArea);
+			CFPNRadarTarget targetPlot = CFPNRadarTarget(callsign, pos,groundSpeed, altitude, runwayThreshold, runwayThreshold.DirectionTo(otherThreshold), range, elevation, angle, glideslopeArea, trackArea);
 			targetPlot.draw(&dc);
 			prevTargets->push_back(targetPlot);
 		}
@@ -169,6 +170,19 @@ void CFPNRadarScreen::rangeChangeHandler(int range, CFPNRadarScreen* parent) {
 		for (int j = 0; j < parent->rangeControlsText[i].size(); j++) {
 			if (i != newlyActive / 1000 || j != newlyActive % 1000) {
 				parent->rangeControlsText[i][j].selected = false;
+			}
+		}
+	}
+}
+
+void CFPNRadarScreen::glideslopeChangeHandler(float angle, CFPNRadarScreen* parent) {
+	((CFPNPlugin*)(parent->GetPlugIn()))->angle = angle;
+	std::map<float, int> m{ {3.0,0}, {2.5,1} };
+	int newlyActive = m[angle];
+	for (int i = 0; i < parent->glideControlsText.size(); i++) {
+		for (int j = 0; j < parent->glideControlsText[i].size(); j++) {
+			if (i != newlyActive / 1000 || j != newlyActive % 1000) {
+				parent->glideControlsText[i][j].selected = false;
 			}
 		}
 	}
@@ -413,12 +427,16 @@ void CFPNRadarScreen::drawInfoText(CDC* pDC, int x, int y) {
 	pDC->SetTextAlign(TA_LEFT);
 	auto* defFont = pDC->SelectObject(&font);
 
-	std::string text = "GS: 3.0  RWY: ";
+	std::stringstream gsAngle;
+	std::string text = "GS: ";
+	gsAngle << std::fixed << std::setprecision(1) << ((CFPNPlugin*)GetPlugIn())->angle;
+	text += gsAngle.str();
 
+	text += "     RWY: ";
 	std::stringstream stream;
 	stream << std::fixed << std::setprecision(1) << ((CFPNPlugin*)GetPlugIn())->runwayThreshold.DirectionTo(((CFPNPlugin*)GetPlugIn())->otherThreshold);
-
 	text += stream.str();
+
 	text += "  DH: 200FT     TIME : ";
 
 	SYSTEMTIME st;

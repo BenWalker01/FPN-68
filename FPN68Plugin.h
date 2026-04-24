@@ -34,6 +34,7 @@ public:
     std::vector<CFPNRadarTarget> previousTargets = std::vector<CFPNRadarTarget>();
 
     int range = 15;
+    float angle = 3;
     float elevation = -1;
     EuroScopePlugIn::CPosition runwayThreshold;
     EuroScopePlugIn::CPosition otherThreshold;
