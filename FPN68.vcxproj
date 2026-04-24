@@ -134,8 +134,8 @@
       <SubSystem>Windows</SubSystem>
       <ModuleDefinitionFile>
       </ModuleDefinitionFile>
-      <AdditionalDependencies>C:\Users\olive\AppData\Roaming\EuroScope\UK\Data\Plugin\dev\FPNBW\FPN-68\EuroScopePlugInDll.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Users\olive\AppData\Roaming\EuroScope\UK\Data\Plugin\dev\FPNBW\FPN-68\EuroscopePlugInDll.lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>EuroScopePlugInDll.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)</AdditionalLibraryDirectories>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -162,8 +162,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>.\FPN68.def</ModuleDefinitionFile>
-      <AdditionalLibraryDirectories>D:\Vatsim uk code stuff\PARFPNRadar\EuroScopePlugInDll.lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>D:\Vatsim uk code stuff\PARFPNRadar\EuroScopePlugInDll.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>EuroScopePlugInDll.lib</AdditionalDependencies>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
