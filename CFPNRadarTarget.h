@@ -40,11 +40,6 @@ private:
 	ULONGLONG latestSampleTimeMs = 0;
 	bool hasLatestSample = false;
 
-	EuroScopePlugIn::CPosition smoothedPos;
-	int smoothedAltitude = 0;
-	ULONGLONG lastSmoothingTimeMs = 0;
-	bool hasSmoothedState = false;
-
 	float airportElevation;
 	std::vector<std::tuple<EuroScopePlugIn::CPosition, int, ULONGLONG>> pastPositions;
 };

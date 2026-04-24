@@ -8,29 +8,10 @@
 #include <sstream>
 
 namespace {
-	constexpr size_t kMaxTrailPoints = 5;
-	constexpr double kMaxExtrapolationRatio = 0.8;
-	constexpr ULONGLONG kMaxExtrapolationMs = 1200;
-	constexpr double kSmoothingTimeConstantMs = 140.0;
-	constexpr double kMinSmoothingAlpha = 0.12;
-	constexpr double kMaxSmoothingAlpha = 0.9;
+	constexpr size_t kMaxTrailPoints = 15;
+	constexpr ULONGLONG kMaxExtrapolationMs = 10000;
 	constexpr double kMaxAzimuthDeviationDeg = 8.0;
 	constexpr double kMaxElevationAngleDeg = 7.0;
-
-	double clampValue(double value, double minValue, double maxValue) {
-		return (std::max)(minValue, (std::min)(value, maxValue));
-	}
-
-	EuroScopePlugIn::CPosition lerpPosition(const EuroScopePlugIn::CPosition& from, const EuroScopePlugIn::CPosition& to, double alpha) {
-		EuroScopePlugIn::CPosition result;
-		result.m_Latitude = from.m_Latitude + (to.m_Latitude - from.m_Latitude) * alpha;
-		result.m_Longitude = from.m_Longitude + (to.m_Longitude - from.m_Longitude) * alpha;
-		return result;
-	}
-
-	int lerpInt(int from, int to, double alpha) {
-		return static_cast<int>(std::lround(from + (to - from) * alpha));
-	}
 
 	double normalizeBearingDifference(double angleDeg) {
 		double normalized = std::fmod(angleDeg + 180.0, 360.0);
@@ -38,6 +19,55 @@ namespace {
 			normalized += 360.0;
 		}
 		return normalized - 180.0;
+	}
+
+	enum class ArrowDirection {
+		Up,
+		Down,
+		Left,
+		Right
+	};
+
+	void drawDirectionArrow(CDC* pDC, int centerX, int centerY, ArrowDirection direction, COLORREF color) {
+		CPen arrowPen(PS_SOLID, 2, color);
+		CPen* oldPen = pDC->SelectObject(&arrowPen);
+
+		switch (direction) {
+		case ArrowDirection::Up:
+			pDC->MoveTo(centerX, centerY + 4);
+			pDC->LineTo(centerX, centerY - 4);
+			pDC->MoveTo(centerX, centerY - 4);
+			pDC->LineTo(centerX - 3, centerY - 1);
+			pDC->MoveTo(centerX, centerY - 4);
+			pDC->LineTo(centerX + 3, centerY - 1);
+			break;
+		case ArrowDirection::Down:
+			pDC->MoveTo(centerX, centerY - 4);
+			pDC->LineTo(centerX, centerY + 4);
+			pDC->MoveTo(centerX, centerY + 4);
+			pDC->LineTo(centerX - 3, centerY + 1);
+			pDC->MoveTo(centerX, centerY + 4);
+			pDC->LineTo(centerX + 3, centerY + 1);
+			break;
+		case ArrowDirection::Left:
+			pDC->MoveTo(centerX + 4, centerY);
+			pDC->LineTo(centerX - 4, centerY);
+			pDC->MoveTo(centerX - 4, centerY);
+			pDC->LineTo(centerX - 1, centerY - 3);
+			pDC->MoveTo(centerX - 4, centerY);
+			pDC->LineTo(centerX - 1, centerY + 3);
+			break;
+		case ArrowDirection::Right:
+			pDC->MoveTo(centerX - 4, centerY);
+			pDC->LineTo(centerX + 4, centerY);
+			pDC->MoveTo(centerX + 4, centerY);
+			pDC->LineTo(centerX + 1, centerY - 3);
+			pDC->MoveTo(centerX + 4, centerY);
+			pDC->LineTo(centerX + 1, centerY + 3);
+			break;
+		}
+
+		pDC->SelectObject(oldPen);
 	}
 }
 
@@ -60,11 +90,6 @@ CFPNRadarTarget::CFPNRadarTarget(std::string callsign, EuroScopePlugIn::CPositio
 	latestSampleAltitude = altitude;
 	latestSampleTimeMs = now;
 	hasLatestSample = true;
-
-	smoothedPos = pos;
-	smoothedAltitude = altitude;
-	lastSmoothingTimeMs = now;
-	hasSmoothedState = true;
 
 	pastPositions.clear();
 	pastPositions.emplace_back(pos, altitude, now);
@@ -139,10 +164,9 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos, int groundS
 		const ULONGLONG sampleDeltaMs = latestSampleTimeMs - previousSampleTimeMs;
 		const ULONGLONG sinceLatestMs = now - latestSampleTimeMs;
 
-		const double cappedLeadMs = (std::min)(
-			static_cast<double>(kMaxExtrapolationMs),
-			static_cast<double>(sampleDeltaMs) * kMaxExtrapolationRatio);
-		const double extrapolatedMs = clampValue(static_cast<double>(sinceLatestMs), 0.0, cappedLeadMs);
+		const double extrapolatedMs = (std::min)(
+			static_cast<double>(sinceLatestMs),
+			static_cast<double>(kMaxExtrapolationMs));
 		const double extrapolationFactor = extrapolatedMs / static_cast<double>(sampleDeltaMs);
 
 		projectedPos.m_Latitude = latestSamplePos.m_Latitude + (latestSamplePos.m_Latitude - previousPos.m_Latitude) * extrapolationFactor;
@@ -150,24 +174,8 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos, int groundS
 		projectedAltitude = latestSampleAltitude + static_cast<int>(std::lround((latestSampleAltitude - previousAltitude) * extrapolationFactor));
 	}
 
-	if (!hasSmoothedState) {
-		smoothedPos = projectedPos;
-		smoothedAltitude = projectedAltitude;
-		hasSmoothedState = true;
-		lastSmoothingTimeMs = now;
-	}
-	else {
-		const ULONGLONG frameDeltaMs = now - lastSmoothingTimeMs;
-		const double rawAlpha = 1.0 - std::exp(-(static_cast<double>(frameDeltaMs) / kSmoothingTimeConstantMs));
-		const double alpha = clampValue(rawAlpha, kMinSmoothingAlpha, kMaxSmoothingAlpha);
-
-		smoothedPos = lerpPosition(smoothedPos, projectedPos, alpha);
-		smoothedAltitude = lerpInt(smoothedAltitude, projectedAltitude, alpha);
-		lastSmoothingTimeMs = now;
-	}
-
-	this->pos = smoothedPos;
-	this->altitude = smoothedAltitude;
+	this->pos = projectedPos;
+	this->altitude = projectedAltitude;
 
 	pastPositions.emplace_back(this->pos, this->altitude, now);
 	if (pastPositions.size() > kMaxTrailPoints) {
@@ -250,17 +258,25 @@ void CFPNRadarTarget::draw(CDC* pDC) {
 
 			if (altDiff > 0) { // High
 				std::wstringstream ss;
-				ss << L"+" << std::setw(3) << std::setfill(L'0') << altDiff << L"\u2193";
+				ss << L"+" << std::setw(3) << std::setfill(L'0') << altDiff;
 				std::wstring altOffset = ss.str();
 				CString altOffsetCStr = altOffset.c_str();
-				pDC->TextOutW(xPos - 75, yPos - 30 - totalTextHeight + textHeight * 2 + 3, altOffsetCStr);
+				int altTextX = xPos - 75;
+				int altTextY = yPos - 30 - totalTextHeight + textHeight * 2 + 3;
+				pDC->TextOutW(altTextX, altTextY, altOffsetCStr);
+				CSize altTextSize = pDC->GetTextExtent(altOffsetCStr);
+				drawDirectionArrow(pDC, altTextX + altTextSize.cx + 6, altTextY + textHeight / 2, ArrowDirection::Down, TRACK_DEVIATION_COLOUR);
 			}
 			else if (altDiff < 0) { // Low
 				std::wstringstream ss;
-				ss << L"-" << std::setw(3) << std::setfill(L'0') << -altDiff << L"\u2191";
+				ss << L"-" << std::setw(3) << std::setfill(L'0') << -altDiff;
 				std::wstring altOffset = ss.str();
 				CString altOffsetCStr = altOffset.c_str();
-				pDC->TextOutW(xPos - 75, yPos - 30 - totalTextHeight + textHeight * 2 + 3, altOffsetCStr);
+				int altTextX = xPos - 75;
+				int altTextY = yPos - 30 - totalTextHeight + textHeight * 2 + 3;
+				pDC->TextOutW(altTextX, altTextY, altOffsetCStr);
+				CSize altTextSize = pDC->GetTextExtent(altOffsetCStr);
+				drawDirectionArrow(pDC, altTextX + altTextSize.cx + 6, altTextY + textHeight / 2, ArrowDirection::Up, TRACK_DEVIATION_COLOUR);
 			}
 
 
@@ -309,17 +325,25 @@ void CFPNRadarTarget::draw(CDC* pDC) {
 
 			if (lateralOffset > 0) { // Right of centerline
 				std::wstringstream ss;
-				ss << L"+" << std::setw(3) << std::setfill(L'0') << lateralOffset << L"\u2190";
+				ss << L"+" << std::setw(3) << std::setfill(L'0') << lateralOffset;
 				std::wstring trackOffset = ss.str();
 				CString trackOffsetCStr = trackOffset.c_str();
-				pDC->TextOutW(xPos - 75, yPos - 30 - totalTextHeight + textHeight * 2 + 3, trackOffsetCStr);
+				int trackTextX = xPos - 75;
+				int trackTextY = yPos - 30 - totalTextHeight + textHeight * 2 + 3;
+				pDC->TextOutW(trackTextX, trackTextY, trackOffsetCStr);
+				CSize trackTextSize = pDC->GetTextExtent(trackOffsetCStr);
+				drawDirectionArrow(pDC, trackTextX + trackTextSize.cx + 6, trackTextY + textHeight / 2, ArrowDirection::Left, TRACK_DEVIATION_COLOUR);
 			}
 			else if (lateralOffset < 0) { // Left
 				std::wstringstream ss;
-				ss << L"-" << std::setw(3) << std::setfill(L'0') << -lateralOffset << L"\u2192";
+				ss << L"-" << std::setw(3) << std::setfill(L'0') << -lateralOffset;
 				std::wstring trackOffset = ss.str();
 				CString trackOffsetCStr = trackOffset.c_str();
-				pDC->TextOutW(xPos - 75, yPos - 30 - totalTextHeight + textHeight * 2 + 3, trackOffsetCStr);
+				int trackTextX = xPos - 75;
+				int trackTextY = yPos - 30 - totalTextHeight + textHeight * 2 + 3;
+				pDC->TextOutW(trackTextX, trackTextY, trackOffsetCStr);
+				CSize trackTextSize = pDC->GetTextExtent(trackOffsetCStr);
+				drawDirectionArrow(pDC, trackTextX + trackTextSize.cx + 6, trackTextY + textHeight / 2, ArrowDirection::Right, TRACK_DEVIATION_COLOUR);
 			}
 
 

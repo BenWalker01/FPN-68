@@ -46,7 +46,7 @@ public:
         {{"Clear\nAlerts", false, false, true, nullptr}, {"Status", false, false, true, nullptr}, {"ACID\nEntry", false, false, true, nullptr}},
     };
     std::vector<std::vector<Setting>> rangeControlsText = {
-        {{"\u2190", false, true, true, nullptr}, {"\u2192", false, false, true, nullptr}, {"1", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(1, parent); }}, {"3", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(3, parent); }}},
+        {{"<", false, true, true, nullptr}, {">", false, false, true, nullptr}, {"1", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(1, parent); }}, {"3", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(3, parent); }}},
         {{"5", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(5, parent); }}, {"10", true, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(10, parent); }}, {"15", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(15, parent); }}, {"20", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(20, parent); }}}
     };
     std::vector<std::vector<Setting>> glideControlsText = {
