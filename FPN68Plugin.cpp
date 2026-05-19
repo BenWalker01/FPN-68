@@ -139,8 +139,30 @@ bool CFPNPlugin::OnCompileCommand(const char* sCommandLine) {
 				}
 			}
 
+			if (payloadLength >= 2 && payload.compare(0, 2, "dh") == 0) {
+				std::string decisionHeightText = payload.substr(2);
+				if (!decisionHeightText.empty() && decisionHeightText[0] == ' ') {
+					decisionHeightText.erase(0, 1);
+				}
+
+				if (decisionHeightText.empty()) {
+					sendMessage("Usage: .fpn dh <number>");
+					return false;
+				}
+
+				try {
+					decisionHeight = std::stoi(decisionHeightText);
+					sendMessage(("Decision height set to " + std::to_string(decisionHeight) + " ft").c_str());
+					return true;
+				}
+				catch (...) {
+					sendMessage("Usage: .fpn dh <number>");
+					return false;
+				}
+			}
+
 			if (payloadLength != 4) {
-				sendMessage("Usage: .fpn <ICAO> or .fpn tdelev <number>");
+				sendMessage("Usage: .fpn <ICAO>, .fpn dh <number>, or .fpn tdelev <number>");
 				return false;
 			}
 
