@@ -10,7 +10,8 @@
 namespace {
 	constexpr size_t kMaxTrailPoints = 15;
 	constexpr ULONGLONG kMaxExtrapolationMs = 10000;
-	constexpr double kMaxAzimuthDeviationDeg = 8.0;
+	constexpr double kMaxAzimuthDeviationDeg = 30.0;
+	constexpr double kMinElevationAngleDeg = -1.0;
 	constexpr double kMaxElevationAngleDeg = 7.0;
 
 	double normalizeBearingDifference(double angleDeg) {
@@ -119,7 +120,7 @@ bool CFPNRadarTarget::isVisibleToRadarHeads(const EuroScopePlugIn::CPosition& ta
 		const double alongCenterlineFt = (std::max)(alongCenterlineNm * 6076.0, 1.0);
 		const double elevationAngleDeg = std::atan2(apparentElevationFt, alongCenterlineFt) * (180.0 / M_PI);
 
-		if (elevationAngleDeg > kMaxElevationAngleDeg) {
+		if (elevationAngleDeg < kMinElevationAngleDeg || elevationAngleDeg > kMaxElevationAngleDeg) {
 			return false;
 		}
 	}
@@ -185,6 +186,10 @@ void CFPNRadarTarget::updatePosition(EuroScopePlugIn::CPosition pos, int groundS
 
 void CFPNRadarTarget::draw(CDC* pDC) {
 	if (pastPositions.empty()) {
+		return;
+	}
+
+	if (!isVisibleToRadarHeads(pos, altitude, runwayThreshold, runwayHeading, radarRange, airportElevation)) {
 		return;
 	}
 

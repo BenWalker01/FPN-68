@@ -78,7 +78,6 @@ void CFPNRadarScreen::OnRefresh(HDC hDC, int Phase) {
 		EuroScopePlugIn::CPosition pos = target.GetPosition().GetPosition();
 		int groundSpeed = target.GetGS();
 		int altitude = target.GetPosition().GetPressureAltitude();
-		if (!CFPNRadarTarget::isVisibleToRadarHeads(pos, altitude, runwayThreshold, runwayHeading, range, elevation)) continue;
 
 		std::string callsign = target.GetCallsign();
 		foundCallsigns.insert(callsign);
