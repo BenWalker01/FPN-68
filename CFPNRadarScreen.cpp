@@ -189,6 +189,19 @@ void CFPNRadarScreen::glideslopeChangeHandler(float angle, CFPNRadarScreen* pare
 	}
 }
 
+void CFPNRadarScreen::decisionHeightChangeHandler(int decisionHeight, CFPNRadarScreen* parent) {
+	((CFPNPlugin*)(parent->GetPlugIn()))->decisionHeight = decisionHeight;
+	std::map<int, int> m{ {210, 0}, {200, 1}, {206, 2} };
+	int newlyActive = m[decisionHeight];
+	for (int i = 0; i < parent->glideControlsText.size(); i++) {
+		for (int j = 0; j < parent->glideControlsText[i].size(); j++) {
+			if (i != 1 || j != newlyActive) {
+				parent->glideControlsText[i][j].selected = false;
+			}
+		}
+	}
+}
+
 void CFPNRadarScreen::runwayChangeHandler(int r, int c, CFPNRadarScreen* parent) {
 	((CFPNPlugin*)(parent->GetPlugIn()))->loadNewAerodrome(((CFPNPlugin*)(parent->GetPlugIn()))->icao.c_str(), parent->runwayControlsText[r][c].text.c_str());
 
@@ -331,11 +344,28 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 
 	int xAxisHeight = glideslopeArea.bottom + (glideslopeArea.top - glideslopeArea.bottom) / 9;
 	int xAxisLeft = glideslopeArea.left + X_AXIS_OFFSET;
+	double pixelScale = ((double)(glideslopeArea.top - glideslopeArea.bottom) * 2.0) / 9.0;
+	double pixelPerFoot = pixelScale / (range * 200.0);
+	int decisionHeight = ((CFPNPlugin*)GetPlugIn())->decisionHeight;
+	double decisionHeightAboveThresholdFt = (double)decisionHeight;
+	double decisionHeightDistanceNm = decisionHeightAboveThresholdFt / (tan(angle * (M_PI / 180.0)) * 6076.0);
+	int decisionHeightY = xAxisHeight + static_cast<int>(decisionHeightAboveThresholdFt * pixelPerFoot);
+	int oneMileX = xAxisLeft + static_cast<int>((glideslopeArea.right - xAxisLeft) / (double)range);
+
+	CPen decisionHeightPen(PS_SOLID, 2, GLIDESLOPE_COLOUR);
+	CPen* pOldDecisionHeightPen = pDC->SelectObject(&decisionHeightPen);
+	pDC->MoveTo(xAxisLeft, decisionHeightY);
+	pDC->LineTo(oneMileX, decisionHeightY);
+
+	if (decisionHeightDistanceNm >= 0.0 && decisionHeightDistanceNm <= (double)range) {
+		int interceptX = xAxisLeft + static_cast<int>((glideslopeArea.right - xAxisLeft) * decisionHeightDistanceNm / (double)range);
+		pDC->MoveTo(interceptX, decisionHeightY - 8);
+		pDC->LineTo(interceptX, decisionHeightY + 8);
+	}
+	pDC->SelectObject(pOldDecisionHeightPen);
 
 	// Compute pixel-per-foot mapping so we can offset the glidepath to intercept
 	// the runway threshold at +50 ft instead of 0 ft.
-	double pixelScale = ((double)(glideslopeArea.top - glideslopeArea.bottom) * 2.0) / 9.0;
-	double pixelPerFoot = pixelScale / (range * 200.0);
 
 	// Altitude (feet) at full range along the glideslope
 	double altitudeAtEndFt = tan(angle * (M_PI / 180.0)) * 6076.0 * (double)range;
@@ -478,7 +508,9 @@ void CFPNRadarScreen::drawInfoText(CDC* pDC, int x, int y) {
 	stream << std::fixed << std::setprecision(1) << ((CFPNPlugin*)GetPlugIn())->runwayThreshold.DirectionTo(((CFPNPlugin*)GetPlugIn())->otherThreshold);
 	text += stream.str();
 
-	text += "  DH: 200FT     TIME : ";
+	text += "  DH: ";
+	text += std::to_string(((CFPNPlugin*)GetPlugIn())->decisionHeight);
+	text += "FT     TIME : ";
 
 	SYSTEMTIME st;
 	GetSystemTime(&st);

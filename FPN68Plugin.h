@@ -31,11 +31,16 @@ public:
         return elevation;
     }
 
+    int getDecisionHeight() const {
+        return decisionHeight;
+    }
+
     std::vector<CFPNRadarTarget> previousTargets = std::vector<CFPNRadarTarget>();
 
     int range = 15;
     float angle = 3;
     float elevation = -1;
+    int decisionHeight = 200;
     EuroScopePlugIn::CPosition runwayThreshold;
     EuroScopePlugIn::CPosition otherThreshold;
 
