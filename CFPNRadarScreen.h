@@ -50,8 +50,8 @@ public:
         {{"5", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(5, parent); }}, {"10", true, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(10, parent); }}, {"15", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(15, parent); }}, {"20", false, false, false, [](CFPNRadarScreen* parent) { rangeChangeHandler(20, parent); }}}
     };
     std::vector<std::vector<Setting>> glideControlsText = {
-        {{"3.0", true, false, false, [](CFPNRadarScreen* parent) {glideslopeChangeHandler(3.0, parent); }}, {"2.5", false, false, false, [](CFPNRadarScreen* parent) {glideslopeChangeHandler(2.5, parent); }}, {"3.0", false, false, true, nullptr}, {"GS", false, false, true, nullptr}},
-        {{"210", true, false, true, nullptr}, {"200", false, false, true, nullptr}, {"210", false, false, true, nullptr}, {"DH", false, false, true, nullptr}}
+        {{"3.0", true, false, false, [](CFPNRadarScreen* parent) { glideslopeChangeHandler(3.0f, parent); }}, {"2.5", false, false, false, [](CFPNRadarScreen* parent) { glideslopeChangeHandler(2.5f, parent); }}, {"3.2", false, false, false, [](CFPNRadarScreen* parent) { glideslopeChangeHandler(3.2f, parent); }}, {"GS", false, false, true, nullptr}},
+        {{"210", true, false, true, nullptr}, {"200", false, false, true, nullptr}, {"206", false, false, true, nullptr}, {"DH", false, false, true, nullptr}}
     };
     std::vector<std::vector<Setting>> displayControlsText = {
         {{"Wx", true, false, true, nullptr}, {"Obs", false, false, true, nullptr}, {"Map", true, false, true, nullptr}, {"WHI", false, false, true, nullptr}},

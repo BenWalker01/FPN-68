@@ -179,7 +179,7 @@ void CFPNRadarScreen::rangeChangeHandler(int range, CFPNRadarScreen* parent) {
 
 void CFPNRadarScreen::glideslopeChangeHandler(float angle, CFPNRadarScreen* parent) {
 	((CFPNPlugin*)(parent->GetPlugIn()))->angle = angle;
-	std::map<float, int> m{ {3.0,0}, {2.5,1} };
+	std::map<float, int> m{ {3.0f, 0}, {2.5f, 1}, {3.2f, 2} };
 	int newlyActive = m[angle];
 	for (int i = 0; i < parent->glideControlsText.size(); i++) {
 		for (int j = 0; j < parent->glideControlsText[i].size(); j++) {
