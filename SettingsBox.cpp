@@ -37,7 +37,7 @@ CPoint SettingsBox::Draw(CDC* pDC) {
     boxRect.OffsetRect(0, 2);
 
     // Create and select the white pen
-    CPen whitePen(PS_SOLID, padding, RGB(255, 255, 255));
+    CPen whitePen(PS_SOLID, padding, RGB(244, 244, 244));
     CPen* oldPen = pDC->SelectObject(&whitePen);
 
     // Select the null brush
@@ -57,15 +57,15 @@ CPoint SettingsBox::Draw(CDC* pDC) {
     topRect.DeflateRect(padding, padding);
 
     // Create and select the light blue pen and brush
-    CPen lightBluePen(PS_SOLID, 1, RGB(0, 187, 253));
+    CPen lightBluePen(PS_SOLID, 1, RGB(28, 171, 239));
     oldPen = pDC->SelectObject(&lightBluePen);
-    CBrush lightBlueBrush(RGB(0, 187, 253));
+    CBrush lightBlueBrush(RGB(28, 171, 239));
     oldBrush = pDC->SelectObject(&lightBlueBrush);
 
     // Draw the title rectangle
     pDC->Rectangle(topRect);
     CString text(m_title.c_str());
-    pDC->SetTextColor(RGB(253, 254, 222));
+    pDC->SetTextColor(RGB(246, 246, 220));
     pDC->DrawText(text, topRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     // define settings box widths
@@ -102,22 +102,22 @@ CPoint SettingsBox::Draw(CDC* pDC) {
             m_parent->AddScreenObject(m_objectType, rowcolid.c_str(), subBox, false, "");
 
             // Set colors based on flipColors
-            COLORREF boxColor = flipColors ? RGB(253, 254, 222) : RGB(87, 86, 104);
-            COLORREF textColor = flipColors ? RGB(87, 86, 104) : RGB(253, 254, 222);
+            COLORREF boxColor = flipColors ? RGB(246, 246, 220) : RGB(92, 91, 106);
+            COLORREF textColor = flipColors ? RGB(92, 91, 106) : RGB(246, 246, 220);
 
             CBrush brush(boxColor);
             CPen pen(PS_SOLID, 1, boxColor);
 
             if (setting.hover) {
                 if (setting.inop) {
-                    CBrush outerBrush(RGB(255, 0, 0));
-                    CPen outerPen(PS_SOLID, 1, RGB(255, 0, 0));
+                    CBrush outerBrush(RGB(230, 42, 42));
+                    CPen outerPen(PS_SOLID, 1, RGB(230, 42, 42));
                     pDC->SelectObject(&outerBrush);
                     pDC->SelectObject(&outerPen);
                     pDC->Rectangle(subBox);
 
                     // INOP text
-                    pDC->SetTextColor(RGB(253, 254, 222));
+                    pDC->SetTextColor(RGB(246, 246, 220));
 
                     CString cstrText(L"INOP");
                     CRect lineRect(subBox.left, subBox.top, subBox.right, subBox.top + subBox.Height());

@@ -370,6 +370,16 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	pDC->MoveTo(xAxisLeft, xAxisHeight);
 	pDC->LineTo(glideslopeArea.right, topOfGS);
 
+	// Reference line at half the glide angle
+	CPen halfGlidePen(PS_DOT, 1, TRACK_DEVIATION_COLOUR);
+	CPen* pOldHalfGlidePen = pDC->SelectObject(&halfGlidePen);
+	double halfAngle = angle * 0.5;
+	double halfAltitudeAtEndFt = tan(halfAngle * (M_PI / 180.0)) * 6076.0 * (double)range;
+	int topOfHalfGS = xAxisHeight + static_cast<int>(halfAltitudeAtEndFt * pixelPerFoot - 50.0 * pixelPerFoot);
+	pDC->MoveTo(xAxisLeft, xAxisHeight);
+	pDC->LineTo(glideslopeArea.right, topOfHalfGS);
+	pDC->SelectObject(pOldHalfGlidePen);
+
 	// Track paths @ 1.25 and 3 degrees
 	CPen trackDeviationPen(0, 1, TRACK_DEVIATION_COLOUR);
 	pDC->SelectObject(&trackDeviationPen);
@@ -391,7 +401,7 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	}
 
 	// Radar limit cone: dotted magenta lines
-	CPen limitPen(PS_DOT, 1, RGB(255, 0, 255));
+	CPen limitPen(PS_DOT, 1, RGB(232, 64, 232));
 	CPen* pOldLimitPen = (CPen*)pDC->SelectObject(&limitPen);
 
 	// Lateral limits: +/- 15 degrees on track area
@@ -447,7 +457,7 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 
 
 		if (i == 8 || i == 16){
-			CPen redPen(PS_SOLID, 2, RGB(255, 0, 0));
+			CPen redPen(PS_SOLID, 2, RGB(230, 42, 42));
 			CPen* pOldPen = pDC->SelectObject(&redPen);
 
 			
@@ -490,7 +500,7 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 void CFPNRadarScreen::drawInfoText(CDC* pDC, int x, int y) {
 	CFont font;
 	font.CreatePointFont(130, L"VCR OSD Mono", pDC);
-	pDC->SetTextColor(RGB(200, 255, 211));
+	pDC->SetTextColor(RGB(194, 239, 205));
 	pDC->SetTextAlign(TA_LEFT);
 	auto* defFont = pDC->SelectObject(&font);
 
@@ -530,17 +540,17 @@ void CFPNRadarScreen::drawSettingsBox(CDC* pDC, CRect radarArea, CRect axesArea)
 	settingsBoxArea.bottom = radarArea.bottom;
 
 	settingsBoxArea.DeflateRect(5, 5);
-	CBrush whiteBrush(RGB(255, 255, 255));
+	CBrush whiteBrush(RGB(244, 244, 244));
 	CBrush* pOldBrush = pDC->SelectObject(&whiteBrush);
-	pDC->FillSolidRect(settingsBoxArea, RGB(255, 255, 255));
+	pDC->FillSolidRect(settingsBoxArea, RGB(244, 244, 244));
 	pDC->SelectObject(pOldBrush);
 
 	CRect blueBoxArea = settingsBoxArea;
 	blueBoxArea.DeflateRect(2,2,2,2);
 
-	CBrush blueBrush(RGB(0, 0, 255));
+	CBrush blueBrush(RGB(28, 54, 232));
 	pOldBrush = pDC->SelectObject(&blueBrush);
-	pDC->FillSolidRect(blueBoxArea, RGB(30, 56, 247));
+	pDC->FillSolidRect(blueBoxArea, RGB(28, 54, 232));
 	pDC->SelectObject(pOldBrush);
 
 	// Draw windows
