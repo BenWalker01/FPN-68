@@ -350,18 +350,14 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	double decisionHeightAboveThresholdFt = (double)decisionHeight;
 	double decisionHeightDistanceNm = decisionHeightAboveThresholdFt / (tan(angle * (M_PI / 180.0)) * 6076.0);
 	int decisionHeightY = xAxisHeight + static_cast<int>(decisionHeightAboveThresholdFt * pixelPerFoot);
-	int oneMileX = xAxisLeft + static_cast<int>((glideslopeArea.right - xAxisLeft) / (double)range);
+	int interceptX = xAxisLeft + static_cast<int>((glideslopeArea.right - xAxisLeft) * decisionHeightDistanceNm / (double)range);
 
 	CPen decisionHeightPen(PS_SOLID, 2, GLIDESLOPE_COLOUR);
 	CPen* pOldDecisionHeightPen = pDC->SelectObject(&decisionHeightPen);
 	pDC->MoveTo(xAxisLeft, decisionHeightY);
-	pDC->LineTo(oneMileX, decisionHeightY);
-
-	if (decisionHeightDistanceNm >= 0.0 && decisionHeightDistanceNm <= (double)range) {
-		int interceptX = xAxisLeft + static_cast<int>((glideslopeArea.right - xAxisLeft) * decisionHeightDistanceNm / (double)range);
-		pDC->MoveTo(interceptX, decisionHeightY - 8);
-		pDC->LineTo(interceptX, decisionHeightY + 8);
-	}
+	int dhLineEndX = interceptX;
+	dhLineEndX += static_cast<int>((glideslopeArea.right - xAxisLeft) * 0.5 / (double)range);
+	pDC->LineTo(dhLineEndX, decisionHeightY);
 	pDC->SelectObject(pOldDecisionHeightPen);
 
 	// Compute pixel-per-foot mapping so we can offset the glidepath to intercept
