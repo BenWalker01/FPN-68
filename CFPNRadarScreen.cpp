@@ -333,7 +333,14 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	int xAxisHeight = glideslopeArea.bottom + (glideslopeArea.top - glideslopeArea.bottom) / 9;
 	int xAxisLeft = glideslopeArea.left + X_AXIS_OFFSET;
 
-	int topOfGS = xAxisHeight + (tan(angle * (M_PI / 180)) * 6076.0f * ((float)range / (range * 200)) * (double)((glideslopeArea.top - glideslopeArea.bottom) * 2 / 9));
+	// Compute pixel-per-foot mapping so we can offset the glidepath to intercept
+	// the runway threshold at +50 ft instead of 0 ft.
+	double pixelScale = ((double)(glideslopeArea.top - glideslopeArea.bottom) * 2.0) / 9.0;
+	double pixelPerFoot = pixelScale / (range * 200.0);
+
+	// Altitude (feet) at full range along the glideslope
+	double altitudeAtEndFt = tan(angle * (M_PI / 180.0)) * 6076.0 * (double)range;
+	int topOfGS = xAxisHeight + static_cast<int>(altitudeAtEndFt * pixelPerFoot - 50.0 * pixelPerFoot);
 
 	pDC->MoveTo(xAxisLeft, xAxisHeight);
 	pDC->LineTo(glideslopeArea.right, topOfGS);
@@ -418,7 +425,7 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 	for (int i = 0; i <= range * 2; i++) {
 		int xPos = xAxisLeft + (glideslopeArea.right - xAxisLeft) * i / (range * 2);
 		int displacement = i % 2 == 0 ? 8 : 4;
-		int yPos = xAxisHeight + (tan(angle * (M_PI / 180)) * 6076.0f * (((float)i/2.0f) / (range * 200)) * (double)((glideslopeArea.top - glideslopeArea.bottom) * 2 / 9));
+		int yPos = xAxisHeight + static_cast<int>( (tan(angle * (M_PI / 180.0)) * 6076.0 * (((double)i/2.0) / (range * 200.0)) * pixelScale) - 50.0 * pixelPerFoot );
 		pDC->MoveTo(xPos, yPos - displacement);  // GS
 		pDC->LineTo(xPos, yPos + displacement);
 	}
