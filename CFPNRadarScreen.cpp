@@ -365,6 +365,34 @@ void CFPNRadarScreen::drawGlidepathAndHorizontalTicks(CDC* pDC, CRect glideslope
 		pDC->LineTo(trackArea.right, trackOffset);
 	}
 
+	// Radar limit cone: dotted magenta lines
+	CPen limitPen(PS_DOT, 1, RGB(255, 0, 255));
+	CPen* pOldLimitPen = (CPen*)pDC->SelectObject(&limitPen);
+
+	// Lateral limits: +/- 15 degrees on track area
+	for (int s = -1; s <= 1; s += 2) {
+		double theta = 15.0 * (double)s * (M_PI / 180.0);
+		int trackLimitOffset = trackXAxisHeight + static_cast<int>(tan(theta) * 6076.0 * ((double)range / (range * 400.0)) * (double)((trackArea.top - trackArea.bottom) / 8));
+		pDC->MoveTo(trackXAxisLeft, trackXAxisHeight);
+		pDC->LineTo(trackArea.right, trackLimitOffset);
+	}
+
+	// Vertical limits: +7 deg above and -1 deg below on glideslope area
+	{
+		double upperAltFt = tan(7.0 * (M_PI / 180.0)) * 6076.0 * (double)range;
+		int upperY = xAxisHeight + static_cast<int>(upperAltFt * pixelPerFoot - 50.0 * pixelPerFoot);
+		pDC->MoveTo(xAxisLeft, xAxisHeight);
+		pDC->LineTo(glideslopeArea.right, upperY);
+
+		double lowerAltFt = tan(-1.0 * (M_PI / 180.0)) * 6076.0 * (double)range;
+		int lowerY = xAxisHeight + static_cast<int>(lowerAltFt * pixelPerFoot - 50.0 * pixelPerFoot);
+		pDC->MoveTo(xAxisLeft, xAxisHeight);
+		pDC->LineTo(glideslopeArea.right, lowerY);
+	}
+
+	// restore previous pen
+	pDC->SelectObject(pOldLimitPen);
+
 	// Both axis ticks and text
 	CPen axesPen(0, 2, AXES_COLOUR);
 	pDC->SelectObject(&axesPen);
