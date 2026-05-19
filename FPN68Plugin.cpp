@@ -101,9 +101,46 @@ bool CFPNPlugin::OnCompileCommand(const char* sCommandLine) {
 		// Ensure the command length is greater than 4 before extracting the payload
 		if (command.length() > 4) {
 			std::string payload = command.substr(5);
+			const size_t payloadLength = payload.length();
 
 			if (payload.empty()) {
 				sendMessage("Command was empty");
+				return false;
+			}
+
+			if (payloadLength >= 6 && payload.compare(0, 6, "tdelev") == 0) {
+				std::string elevationText = payload.substr(6);
+				if (!elevationText.empty() && elevationText[0] == ' ') {
+					elevationText.erase(0, 1);
+				}
+
+				if (elevationText.empty()) {
+					sendMessage("Usage: .fpn tdelev <number>");
+					return false;
+				}
+
+				try {
+					elevation = std::stof(elevationText);
+
+					for (void* radarScreenPtr : radarScreens) {
+						((CFPNRadarScreen*)radarScreenPtr)->setElevation(elevation);
+					}
+
+					for (auto& trackedTarget : previousTargets) {
+						trackedTarget.setAirportElevation(elevation);
+					}
+
+					sendMessage(("TDZ elevation set to " + std::to_string(elevation) + " ft").c_str());
+					return true;
+				}
+				catch (...) {
+					sendMessage("Usage: .fpn tdelev <number>");
+					return false;
+				}
+			}
+
+			if (payloadLength != 4) {
+				sendMessage("Usage: .fpn <ICAO> or .fpn tdelev <number>");
 				return false;
 			}
 

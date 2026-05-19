@@ -16,6 +16,9 @@ public:
 
 	static bool isVisibleToRadarHeads(const EuroScopePlugIn::CPosition& targetPos, int targetAltitude, const EuroScopePlugIn::CPosition& runwayThreshold, float runwayHeading, int radarRangeNm, float airportElevationFt);
 	void updatePosition(EuroScopePlugIn::CPosition pos, int groundSpeed, int altitude, int radarRange, EuroScopePlugIn::CPosition runwayThreshold, EuroScopePlugIn::CPosition otherThreshold, float glideslopeAngle, CRect glideslopeArea, CRect trackArea);
+	void setAirportElevation(float airportElevationFt) {
+		airportElevation = airportElevationFt;
+	}
 	void draw(CDC *pDC);
 
 	std::string callsign;
